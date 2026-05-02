@@ -4,6 +4,7 @@ ADD predict.py /predict.py
 ADD requirements.txt /requirements.txt
 
 RUN pip3 install --no-cache-dir -r /requirements.txt
+RUN pip3 uninstall -y torchvision
 
 ARG MODEL_NAME=sambus211/zhaw_at_touche_setup7_qwen
 ARG QWEN_MODEL=Qwen/Qwen2.5-1.5B-Instruct
