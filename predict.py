@@ -14,7 +14,7 @@ from tira.rest_api_client import Client
 from tira.third_party_integrations import get_output_directory
 from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 
-CLASSIFIER_MODEL_NAME = "sambus211/zhaw_at_touche_setup7_qwen"
+MODEL_NAME = "sambus211/zhaw_at_touche_setup7_qwen"
 QWEN_MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 DEFAULT_TAG = "zhawAtToucheSetup7Qwen"
 DEFAULT_BATCH_SIZE = 4
@@ -241,7 +241,7 @@ def load_records_from_source(input_source: str) -> tuple[list[dict[str, Any]], s
     return load_tira_dataset_records(input_source), input_source
 
 
-def load_classifier_model(model_name: str, device: str):
+def load_model(model_name: str, device: str):
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
         model = AutoModelForSequenceClassification.from_pretrained(
@@ -449,7 +449,7 @@ def resolve_output_file(args: argparse.Namespace) -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the setup7-qwen TIRA submission: generate local Qwen neutrals, then classify with the Longformer model."
+        description="Run the setup7-qwen TIRA submission: reuse or generate Qwen neutrals, then classify with the Longformer model."
     )
     parser.add_argument(
         "--dataset",
@@ -473,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional explicit prediction file path. Overrides --output-directory when set.",
     )
-    parser.add_argument("--classifier-model", default=CLASSIFIER_MODEL_NAME)
+    parser.add_argument("--model-name", default=MODEL_NAME)
     parser.add_argument("--qwen-model", default=QWEN_MODEL_NAME)
     parser.add_argument("--tag", default=DEFAULT_TAG)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
@@ -493,8 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Reuse an existing 'qwen' field in the input if present; otherwise generate it locally.",
     )
-    parser.add_argument("--classifier-device", choices=("cuda", "mps", "cpu"), default=None)
-    parser.add_argument("--qwen-device", choices=("cuda", "mps", "cpu"), default=None)
+    parser.add_argument("--device", choices=("cuda", "mps", "cpu"), default=None)
     return parser
 
 
@@ -504,31 +503,30 @@ def main() -> None:
     raw_records, input_description = load_records_from_source(input_source)
     output_file = resolve_output_file(args)
 
-    classifier_device = resolve_device(args.classifier_device)
-    qwen_device = resolve_device(args.qwen_device)
+    device = resolve_device(args.device)
 
     records = raw_records
     if needs_neutral_generation(raw_records, reuse_existing_neutral=args.reuse_existing_neutral):
-        qwen_tokenizer, qwen_model = load_local_generation_model(args.qwen_model, qwen_device)
+        qwen_tokenizer, qwen_model = load_local_generation_model(args.qwen_model, device)
         records = maybe_generate_neutrals(
             records=raw_records,
             qwen_tokenizer=qwen_tokenizer,
             qwen_model=qwen_model,
-            qwen_device=qwen_device,
+            qwen_device=device,
             max_new_tokens=args.qwen_max_new_tokens,
             reuse_existing_neutral=args.reuse_existing_neutral,
         )
         del qwen_model
         del qwen_tokenizer
-        if qwen_device == "cuda":
+        if device == "cuda":
             torch.cuda.empty_cache()
 
-    classifier_tokenizer, classifier_model = load_classifier_model(args.classifier_model, classifier_device)
+    tokenizer, model = load_model(args.model_name, device)
     labels = predict_labels(
         records=records,
-        model=classifier_model,
-        tokenizer=classifier_tokenizer,
-        device=classifier_device,
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
         batch_size=args.batch_size,
         max_length=args.max_length,
         threshold=args.threshold,
@@ -540,7 +538,7 @@ def main() -> None:
     print(f"input_source={input_description}")
     print(f"rows={len(records)}")
     print(f"output_file={output_file}")
-    print(f"classifier_model={args.classifier_model}")
+    print(f"model_name={args.model_name}")
     print(f"qwen_model={args.qwen_model}")
     print(f"tag={args.tag}")
 
