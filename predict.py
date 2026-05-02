@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import re
@@ -19,6 +20,8 @@ QWEN_MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 DEFAULT_TAG = "zhawAtToucheSetup7Qwen"
 DEFAULT_BATCH_SIZE = 4
 DEFAULT_MAX_LENGTH = 1024
+DEFAULT_CPU_BATCH_SIZE = 1
+DEFAULT_CPU_MAX_LENGTH = 512
 DEFAULT_MAX_NEW_TOKENS = 220
 DEFAULT_THRESHOLD = 0.5
 DEFAULT_REFERENCE_LABEL = "QWEN"
@@ -447,6 +450,17 @@ def resolve_output_file(args: argparse.Namespace) -> Path:
     return Path(get_output_directory(str(Path(__file__).parent))) / "predictions.jsonl"
 
 
+def tune_runtime_settings(args: argparse.Namespace, device: str) -> None:
+    if device == "cuda":
+        return
+
+    if args.batch_size == DEFAULT_BATCH_SIZE:
+        args.batch_size = DEFAULT_CPU_BATCH_SIZE
+
+    if args.max_length == DEFAULT_MAX_LENGTH:
+        args.max_length = DEFAULT_CPU_MAX_LENGTH
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the setup7-qwen TIRA submission: reuse or generate Qwen neutrals, then classify with the Longformer model."
@@ -504,6 +518,7 @@ def main() -> None:
     output_file = resolve_output_file(args)
 
     device = resolve_device(args.device)
+    tune_runtime_settings(args, device)
 
     records = raw_records
     if needs_neutral_generation(raw_records, reuse_existing_neutral=args.reuse_existing_neutral):
@@ -518,6 +533,7 @@ def main() -> None:
         )
         del qwen_model
         del qwen_tokenizer
+        gc.collect()
         if device == "cuda":
             torch.cuda.empty_cache()
 
