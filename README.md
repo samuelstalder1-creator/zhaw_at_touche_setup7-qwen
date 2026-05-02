@@ -188,6 +188,37 @@ tira-cli login --token <YOUR_TIRA_TOKEN>
 tira-cli verify-installation --task advertisement-in-retrieval-augmented-generation-2026
 ```
 
+If you use Docker Desktop with the containerd image store enabled, TIRA may
+reject uploaded images even though the local build and push succeed. In that
+case, force Docker v2 manifest output during submission:
+
+```bash
+tira-cli code-submission \
+  --path . \
+  --task advertisement-in-retrieval-augmented-generation-2026 \
+  --dataset ads-in-rag-task-1-detection-spot-check-20260422-training \
+  --command '/predict.py' \
+  --build-args '--output type=docker --provenance=false'
+```
+
+If Docker still exports an incompatible image, disable Docker Desktop's
+`Use containerd for pulling and storing images` setting, rebuild, and retry the
+submission.
+
+If the failure happens before your submission image is built, `tira-cli` is
+likely rejecting its own internal `tira-mini` preflight image before the
+`--build-args` above are applied. In that case, prepend the repo-local Docker
+wrapper so every `docker build` invoked by `tira-cli` gets the compatibility
+flags, including the preflight check:
+
+```bash
+PATH="${PWD}/tools:${PATH}" tira-cli code-submission \
+  --path . \
+  --task advertisement-in-retrieval-augmented-generation-2026 \
+  --dataset ads-in-rag-task-1-detection-spot-check-20260422-training \
+  --command '/predict.py'
+```
+
 ### TIRA Dry-Run Validation
 
 This is the closest local validation to a real TIRA code submission. It builds
